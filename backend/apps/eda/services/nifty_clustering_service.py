@@ -85,6 +85,16 @@ def _max_drawdown(close: pd.Series) -> float | None:
     return float(drawdown.min()) if not drawdown.empty else None
 
 
+def _discount_from_period_high(close: pd.Series) -> float | None:
+    if close.empty:
+        return None
+    last = close.iloc[-1]
+    period_high = close.max()
+    if period_high is None or pd.isna(period_high) or period_high == 0 or pd.isna(last):
+        return None
+    return float(((period_high - last) / period_high) * 100.0)
+
+
 def _build_stock_features(symbol: str, period: str = "1y", interval: str = "1d") -> Dict[str, float] | None:
     df = yf.download(symbol, period=period, interval=interval, auto_adjust=False, progress=False, threads=False)
     if df is None or df.empty:
@@ -106,6 +116,9 @@ def _build_stock_features(symbol: str, period: str = "1y", interval: str = "1d")
     vol_1y = float(returns.std() * math.sqrt(252)) if len(returns) > 1 else None
     max_dd = _max_drawdown(close)
     avg_volume_3m = float(volume.tail(66).mean()) if not volume.empty else None
+    last_close = float(close.iloc[-1]) if not close.empty else None
+    period_high = float(close.max()) if not close.empty else None
+    discount_pct = _discount_from_period_high(close)
 
     return {
         "symbol": symbol,
@@ -116,6 +129,9 @@ def _build_stock_features(symbol: str, period: str = "1y", interval: str = "1d")
         "vol_1y": vol_1y,
         "max_drawdown_1y": max_dd,
         "avg_volume_3m": avg_volume_3m,
+        "last_close": last_close,
+        "period_high": period_high,
+        "discount_pct": discount_pct,
     }
 
 
@@ -180,6 +196,9 @@ def get_nifty_clusters(period: str = "1y", interval: str = "1d") -> Dict:
                         "vol_1y": float(returns.std() * math.sqrt(252)) if len(returns) > 1 else None,
                         "max_drawdown_1y": _max_drawdown(close),
                         "avg_volume_3m": float(volume.tail(66).mean()) if not volume.empty else None,
+                        "last_close": float(close.iloc[-1]) if not close.empty else None,
+                        "period_high": float(close.max()) if not close.empty else None,
+                        "discount_pct": _discount_from_period_high(close),
                     }
         if feature_row:
             rows.append(feature_row)
@@ -231,6 +250,7 @@ def get_nifty_clusters(period: str = "1y", interval: str = "1d") -> Dict:
                 "vol_1y": round(float(row["vol_1y"]), 6) if pd.notna(row["vol_1y"]) else None,
                 "max_drawdown_1y": round(float(row["max_drawdown_1y"]), 6) if pd.notna(row["max_drawdown_1y"]) else None,
                 "avg_volume_3m": round(float(row["avg_volume_3m"]), 2) if pd.notna(row["avg_volume_3m"]) else None,
+                "discount_pct": round(float(row["discount_pct"]), 2) if pd.notna(row["discount_pct"]) else None,
             }
         )
 

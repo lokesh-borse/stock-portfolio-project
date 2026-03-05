@@ -10,8 +10,6 @@ import {
   removeStockFromPortfolio,
   searchLiveStocks
 } from '../api/stocks.js'
-import LinearRegressionAnalysis from '../components/LinearRegressionAnalysis.jsx'
-import LogisticRegressionAnalysis from '../components/LogisticRegressionAnalysis.jsx'
 
 function PeRatioGraph({ points }) {
   if (!points.length) return <div className="text-sm text-slate-500">No P/E data yet.</div>
@@ -187,6 +185,11 @@ export default function PortfolioDetail() {
     return n === null ? '-' : n.toFixed(digits)
   }
 
+  function fmtPct(value) {
+    const n = toFinite(value)
+    return n === null ? '-' : `${n.toFixed(2)}%`
+  }
+
   const pePoints = useMemo(() => {
     if (!portfolio?.stocks?.length) return []
     return portfolio.stocks
@@ -196,8 +199,13 @@ export default function PortfolioDetail() {
 
   const holdingsRows = useMemo(() => {
     if (!portfolio?.stocks?.length) return []
+    const linearBySymbol = Object.fromEntries((lrData?.predictions || []).map((row) => [row.symbol, row]))
+    const logisticBySymbol = Object.fromEntries((logData?.predictions || []).map((row) => [row.symbol, row]))
+
     return portfolio.stocks.map((s) => {
       const metrics = metricsMap[s.symbol] || {}
+      const linear = linearBySymbol[s.symbol] || null
+      const logistic = logisticBySymbol[s.symbol] || null
       const last = toFinite(metrics.last)
       const min365 = toFinite(metrics.min365)
       const max365 = toFinite(metrics.max365)
@@ -217,10 +225,13 @@ export default function PortfolioDetail() {
         avg,
         qty,
         discount,
-        unrealizedPnl
+        unrealizedPnl,
+        predictedNextClose: toFinite(linear?.predicted_next_close),
+        predictedChangePercent: toFinite(linear?.predicted_change_percent),
+        signal: logistic?.signal || null
       }
     })
-  }, [portfolio, metricsMap])
+  }, [portfolio, metricsMap, lrData, logData])
 
   async function onAdd(symbol) {
     try {
@@ -286,21 +297,23 @@ export default function PortfolioDetail() {
         <PeRatioGraph points={pePoints} />
       </div>
 
-      <LinearRegressionAnalysis
-        data={lrData}
-        loading={lrLoading}
-        onRefresh={loadLinearRegression}
-      />
-      <LogisticRegressionAnalysis
-        data={logData}
-        loading={logLoading}
-        onRefresh={loadLogisticRegression}
-      />
-
       {message && <div className="mb-4 text-sm font-medium text-emerald-700">{message}</div>}
       <div className="rounded-2xl border border-white/80 bg-white/90 overflow-hidden shadow-sm">
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="text-sm text-slate-600">ML predictions merged into stock rows.</div>
+          <button
+            type="button"
+            onClick={async () => {
+              await Promise.all([loadLinearRegression(), loadLogisticRegression()])
+            }}
+            disabled={lrLoading || logLoading}
+            className="px-3 py-2 rounded-lg bg-teal-700 text-white hover:bg-teal-800 transition disabled:opacity-60"
+          >
+            {lrLoading || logLoading ? 'Refreshing ML...' : 'Refresh ML'}
+          </button>
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[1050px]">
+          <table className="w-full text-left min-w-[1360px]">
             <thead>
               <tr className="bg-gradient-to-r from-slate-100 to-teal-100 text-slate-900">
                 <th className="p-3">Symbol</th>
@@ -310,6 +323,9 @@ export default function PortfolioDetail() {
                 <th className="p-3">Max (365d)</th>
                 <th className="p-3">P/E</th>
                 <th className="p-3">Discount</th>
+                <th className="p-3">Predicted Next Close</th>
+                <th className="p-3">Predicted Change</th>
+                <th className="p-3">Signal</th>
                 <th className="p-3">Action</th>
               </tr>
             </thead>
@@ -327,6 +343,25 @@ export default function PortfolioDetail() {
                   <td className="p-3">{fmt(s.max365, 2)}</td>
                   <td className="p-3">{s.pe_ratio ?? '-'}</td>
                   <td className="p-3">{s.discount === null ? '-' : `${fmt(s.discount, 2)}%`}</td>
+                  <td className="p-3">{fmt(s.predictedNextClose, 2)}</td>
+                  <td className={`p-3 font-medium ${s.predictedChangePercent !== null && s.predictedChangePercent >= 0 ? 'text-emerald-700' : s.predictedChangePercent !== null ? 'text-rose-700' : ''}`}>
+                    {fmtPct(s.predictedChangePercent)}
+                  </td>
+                  <td className="p-3">
+                    {s.signal ? (
+                      <span
+                        className={`px-2 py-1 rounded text-xs font-semibold ${
+                          s.signal === 'BUY'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : s.signal === 'HOLD'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-rose-100 text-rose-700'
+                        }`}
+                      >
+                        {s.signal}
+                      </span>
+                    ) : '-'}
+                  </td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
                       <Link

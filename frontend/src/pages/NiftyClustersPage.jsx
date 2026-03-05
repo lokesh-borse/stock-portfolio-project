@@ -86,6 +86,17 @@ export default function NiftyClustersPage() {
     }
   }
 
+  const sortedAssignments = useMemo(() => {
+    const rows = [...(data?.items || [])]
+    rows.sort((a, b) => {
+      const clusterA = Number(a.cluster_id)
+      const clusterB = Number(b.cluster_id)
+      if (clusterA !== clusterB) return clusterA - clusterB
+      return String(a.symbol || '').localeCompare(String(b.symbol || ''))
+    })
+    return rows
+  }, [data])
+
   return (
     <div className="mx-auto w-[96vw] max-w-[1700px] p-4 md:p-6">
       <div className="rounded-3xl border border-white/70 bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 p-6 shadow-lg shadow-teal-900/10 mb-6">
@@ -187,10 +198,11 @@ export default function NiftyClustersPage() {
                     <th className="p-3">ret_6m</th>
                     <th className="p-3">vol_1y</th>
                     <th className="p-3">drawdown</th>
+                    <th className="p-3">Discount</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(data.items || []).map((row) => (
+                  {sortedAssignments.map((row) => (
                     <tr key={row.symbol} className="border-t border-slate-100">
                       <td className="p-3 font-semibold">{row.symbol}</td>
                       <td className="p-3">{row.cluster_id}</td>
@@ -200,6 +212,7 @@ export default function NiftyClustersPage() {
                       <td className="p-3">{row.ret_6m}</td>
                       <td className="p-3">{row.vol_1y}</td>
                       <td className="p-3">{row.max_drawdown_1y}</td>
+                      <td className="p-3">{Number.isFinite(Number(row.discount_pct)) ? `${Number(row.discount_pct).toFixed(2)}%` : '-'}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -20,6 +20,7 @@ INSTALLED_APPS = [
     'apps.eda',
     'apps.portfolio',
     'apps.stocks',
+    'apps.ml_tasks',
 ]
 
 MIDDLEWARE = [
@@ -100,3 +101,16 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:5174',
     'http://127.0.0.1:5174',
 ]
+
+CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    "bitcoin_prediction_every_15_minutes": {
+        "task": "apps.ml_tasks.tasks.run_bitcoin_prediction",
+        "schedule": crontab(minute="*/15"),
+    },
+}
