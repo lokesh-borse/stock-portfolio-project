@@ -21,3 +21,20 @@ class PortfolioStock(models.Model):
 
     class Meta:
         unique_together = ('portfolio', 'stock')
+
+
+class TimeSeriesForecast(models.Model):
+    portfolio = models.ForeignKey(Portfolio, on_delete=models.CASCADE, related_name='time_series_forecasts')
+    stock = models.ForeignKey('stocks.Stock', on_delete=models.CASCADE, related_name='time_series_forecasts')
+    model_name = models.CharField(max_length=32, default='ARIMA')
+    horizon_days = models.PositiveSmallIntegerField()
+    points_used = models.PositiveIntegerField(default=0)
+    latest_close = models.DecimalField(max_digits=12, decimal_places=4)
+    predicted_close = models.DecimalField(max_digits=12, decimal_places=4)
+    predicted_change_percent = models.DecimalField(max_digits=10, decimal_places=4)
+    historical_points = models.JSONField(default=list, blank=True)
+    prediction_points = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']

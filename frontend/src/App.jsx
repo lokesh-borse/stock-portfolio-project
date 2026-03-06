@@ -8,6 +8,7 @@ import StockDetail from './pages/StockDetail.jsx'
 import LiveStockDetail from './pages/LiveStockDetail.jsx'
 import MetalsCorrelationPage from './pages/MetalsCorrelationPage.jsx'
 import NiftyClustersPage from './pages/NiftyClustersPage.jsx'
+import TimeSeriesForecastPage from './pages/TimeSeriesForecastPage.jsx'
 import Navbar from './components/Navbar.jsx'
 import ProtectedRoute from './routes/ProtectedRoute.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
@@ -57,6 +58,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <LiveStockDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/time-series-forecast"
+          element={
+            <ProtectedRoute>
+              <TimeSeriesForecastPage />
             </ProtectedRoute>
           }
         />

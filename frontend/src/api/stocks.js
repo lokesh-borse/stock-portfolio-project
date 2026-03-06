@@ -20,6 +20,14 @@ export async function fetchPortfolioLogisticRegression(portfolioId) {
   return res.data
 }
 
+export async function fetchPortfolioTimeSeriesForecast(portfolioId, symbol, horizonDays = 1) {
+  const res = await api.post(`portfolio/${portfolioId}/time-series-forecast/`, {
+    symbol,
+    horizon_days: horizonDays
+  })
+  return res.data
+}
+
 export async function fetchMetalsCorrelation(period = '5y', interval = '1d') {
   const res = await api.get('eda/metals/correlation/', {
     params: { period, interval }

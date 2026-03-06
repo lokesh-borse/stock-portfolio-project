@@ -27,6 +27,7 @@ export default function Navbar() {
           <nav className="flex items-center gap-2 md:gap-3 flex-wrap justify-end">
             <NavLink to="/portfolio" className={navItemClass}>Dashboard</NavLink>
             <NavLink to="/stocks" className={navItemClass}>Stocks</NavLink>
+            <NavLink to="/time-series-forecast" className={navItemClass}>TimeSeries Forecast</NavLink>
             <NavLink to="/metals" className={navItemClass}>Gold-Silver</NavLink>
             <NavLink to="/nifty-clusters" className={navItemClass}>Nifty Clusters</NavLink>
             <span className="hidden sm:inline text-xs text-white/80 px-2">{user?.username || ''}</span>

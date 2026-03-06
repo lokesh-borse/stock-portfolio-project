@@ -1,13 +1,17 @@
+from datetime import date, timedelta
+
+import pandas as pd
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from .models import Portfolio, PortfolioStock
+from .models import Portfolio, PortfolioStock, TimeSeriesForecast
 from .serializers import PortfolioSerializer
 from .linear_regression import predict_next_close
 from .logistic_regression import predict_next_direction
+from .time_series import forecast_arima
 from apps.stocks.models import Stock
-from services.stock_service import get_stock_profile, get_history
+from services.stock_service import get_stock_profile, get_history, get_live_quote
 
 class PortfolioViewSet(viewsets.ModelViewSet):
     serializer_class = PortfolioSerializer
@@ -189,5 +193,120 @@ class PortfolioViewSet(viewsets.ModelViewSet):
                 'model': 'logistic_regression',
                 'predictions': predictions,
                 'skipped': skipped,
+            }
+        )
+
+    @action(detail=True, methods=['POST'], url_path='time-series-forecast')
+    def time_series_forecast(self, request, pk=None):
+        portfolio = self.get_object()
+        symbol = (request.data.get('symbol') or '').upper().strip()
+        horizon_days_raw = request.data.get('horizon_days', 1)
+
+        if not symbol:
+            return Response({'detail': 'symbol is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            horizon_days = int(horizon_days_raw)
+        except (TypeError, ValueError):
+            return Response({'detail': 'horizon_days must be an integer (1 or 7)'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if horizon_days not in (1, 7):
+            return Response({'detail': 'horizon_days must be 1 or 7'}, status=status.HTTP_400_BAD_REQUEST)
+
+        holding = (
+            portfolio.holdings
+            .select_related('stock')
+            .filter(stock__symbol=symbol)
+            .first()
+        )
+        if not holding:
+            return Response({'detail': 'Selected stock is not part of this portfolio'}, status=status.HTTP_400_BAD_REQUEST)
+
+        history = get_history(symbol, period='2y', interval='1d') or []
+        history = [h for h in history if h.get('close_price') is not None]
+        if len(history) < 30:
+            return Response({'detail': 'Need at least 30 historical close prices from yfinance'}, status=status.HTTP_400_BAD_REQUEST)
+
+        prices = [float(h['close_price']) for h in history]
+        result = forecast_arima(prices=prices, symbol=symbol)
+
+        last_date_str = history[-1].get('date')
+        try:
+            last_date = date.fromisoformat(last_date_str)
+        except Exception:
+            last_date = date.today()
+
+        future_dates = [d.date().isoformat() for d in pd.bdate_range(start=last_date + timedelta(days=1), periods=7)]
+        forecast_7_points = [
+            {'date': future_dates[idx], 'predicted_close': result.forecast_7[idx]}
+            for idx in range(7)
+        ]
+
+        selected_forecast_points = forecast_7_points[:horizon_days]
+        selected_prediction = {
+            'horizon_days': horizon_days,
+            'predicted_close': result.ts_1_close if horizon_days == 1 else result.ts_7_close,
+            'predicted_change_percent': result.ts_1_change_percent if horizon_days == 1 else result.ts_7_change_percent,
+        }
+
+        history_points = [
+            {'date': h['date'], 'close': float(h['close_price'])}
+            for h in history[-120:]
+        ]
+
+        current_quote = get_live_quote(symbol) or {}
+        current_price = current_quote.get('price')
+        if current_price is None:
+            current_price = result.latest_close
+
+        forecast_record = TimeSeriesForecast.objects.create(
+            portfolio=portfolio,
+            stock=holding.stock,
+            model_name='ARIMA',
+            horizon_days=horizon_days,
+            points_used=result.points_used,
+            latest_close=result.latest_close,
+            predicted_close=selected_prediction['predicted_close'],
+            predicted_change_percent=selected_prediction['predicted_change_percent'],
+            historical_points=history_points,
+            prediction_points=selected_forecast_points,
+        )
+
+        return Response(
+            {
+                'forecast_id': forecast_record.id,
+                'portfolio_id': portfolio.id,
+                'portfolio_name': portfolio.name,
+                'symbol': symbol,
+                'model': 'ARIMA',
+                'order': list(result.order),
+                'points_used': result.points_used,
+                'history': history_points,
+                'selected_horizon_days': horizon_days,
+                'selected_forecast': selected_forecast_points,
+                'selected_prediction': selected_prediction,
+                'ts_1': {
+                    'horizon_days': 1,
+                    'predicted_close': result.ts_1_close,
+                    'predicted_change_percent': result.ts_1_change_percent,
+                },
+                'ts_7': {
+                    'horizon_days': 7,
+                    'predicted_close': result.ts_7_close,
+                    'predicted_change_percent': result.ts_7_change_percent,
+                },
+                'stock_info': {
+                    'stock_id': holding.stock.id,
+                    'symbol': holding.stock.symbol,
+                    'name': holding.stock.name,
+                    'sector': holding.stock.sector,
+                    'industry': holding.stock.industry,
+                    'pe_ratio': holding.stock.pe_ratio,
+                    'current_price': current_price,
+                    'latest_close': result.latest_close,
+                    'week_52_high': holding.stock._52_week_high,
+                    'week_52_low': holding.stock._52_week_low,
+                },
+                'created_at': forecast_record.created_at,
             }
         )

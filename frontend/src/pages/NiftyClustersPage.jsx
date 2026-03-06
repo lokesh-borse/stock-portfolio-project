@@ -86,6 +86,16 @@ export default function NiftyClustersPage() {
     }
   }
 
+  const sortedItems = useMemo(() => {
+    const rows = data?.items || []
+    return [...rows].sort((a, b) => {
+      const ca = Number(a.cluster_id)
+      const cb = Number(b.cluster_id)
+      if (ca !== cb) return ca - cb
+      return String(a.symbol).localeCompare(String(b.symbol))
+    })
+  }, [data])
+
   return (
     <div className="mx-auto w-[96vw] max-w-[1700px] p-4 md:p-6">
       <div className="rounded-3xl border border-white/70 bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 p-6 shadow-lg shadow-teal-900/10 mb-6">
@@ -190,7 +200,7 @@ export default function NiftyClustersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(data.items || []).map((row) => (
+                  {sortedItems.map((row) => (
                     <tr key={row.symbol} className="border-t border-slate-100">
                       <td className="p-3 font-semibold">{row.symbol}</td>
                       <td className="p-3">{row.cluster_id}</td>

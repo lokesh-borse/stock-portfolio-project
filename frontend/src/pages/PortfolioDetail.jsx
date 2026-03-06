@@ -10,8 +10,6 @@ import {
   removeStockFromPortfolio,
   searchLiveStocks
 } from '../api/stocks.js'
-import LinearRegressionAnalysis from '../components/LinearRegressionAnalysis.jsx'
-import LogisticRegressionAnalysis from '../components/LogisticRegressionAnalysis.jsx'
 
 function PeRatioGraph({ points }) {
   if (!points.length) return <div className="text-sm text-slate-500">No P/E data yet.</div>
@@ -71,6 +69,7 @@ export default function PortfolioDetail() {
   const [lrLoading, setLrLoading] = useState(false)
   const [logData, setLogData] = useState(null)
   const [logLoading, setLogLoading] = useState(false)
+  const [refreshingAll, setRefreshingAll] = useState(false)
 
   async function loadPortfolio() {
     try {
@@ -194,10 +193,22 @@ export default function PortfolioDetail() {
       .map((s) => ({ label: s.symbol, pe: Number(s.pe_ratio) }))
   }, [portfolio])
 
+  const lrPredictionsBySymbol = useMemo(() => {
+    const rows = lrData?.predictions || []
+    return Object.fromEntries(rows.map((row) => [row.symbol, row]))
+  }, [lrData])
+
+  const logisticPredictionsBySymbol = useMemo(() => {
+    const rows = logData?.predictions || []
+    return Object.fromEntries(rows.map((row) => [row.symbol, row]))
+  }, [logData])
+
   const holdingsRows = useMemo(() => {
     if (!portfolio?.stocks?.length) return []
     return portfolio.stocks.map((s) => {
       const metrics = metricsMap[s.symbol] || {}
+      const lr = lrPredictionsBySymbol[s.symbol]
+      const log = logisticPredictionsBySymbol[s.symbol]
       const last = toFinite(metrics.last)
       const min365 = toFinite(metrics.min365)
       const max365 = toFinite(metrics.max365)
@@ -217,10 +228,13 @@ export default function PortfolioDetail() {
         avg,
         qty,
         discount,
-        unrealizedPnl
+        unrealizedPnl,
+        predictedNextClose: toFinite(lr?.predicted_next_close),
+        predictedChangePercent: toFinite(lr?.predicted_change_percent),
+        signal: log?.signal || null
       }
     })
-  }, [portfolio, metricsMap])
+  }, [portfolio, metricsMap, lrPredictionsBySymbol, logisticPredictionsBySymbol])
 
   async function onAdd(symbol) {
     try {
@@ -246,6 +260,12 @@ export default function PortfolioDetail() {
     } catch {
       setMessage('Remove failed')
     }
+  }
+
+  async function onRefreshAll() {
+    setRefreshingAll(true)
+    await Promise.all([loadPortfolio(), loadLinearRegression(), loadLogisticRegression()])
+    setRefreshingAll(false)
   }
 
   if (!portfolio) return <div className="mx-auto max-w-6xl p-6">Loading...</div>
@@ -286,30 +306,32 @@ export default function PortfolioDetail() {
         <PeRatioGraph points={pePoints} />
       </div>
 
-      <LinearRegressionAnalysis
-        data={lrData}
-        loading={lrLoading}
-        onRefresh={loadLinearRegression}
-      />
-      <LogisticRegressionAnalysis
-        data={logData}
-        loading={logLoading}
-        onRefresh={loadLogisticRegression}
-      />
-
       {message && <div className="mb-4 text-sm font-medium text-emerald-700">{message}</div>}
       <div className="rounded-2xl border border-white/80 bg-white/90 overflow-hidden shadow-sm">
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50/80">
+          <button
+            type="button"
+            onClick={onRefreshAll}
+            className="px-3 py-1.5 rounded-lg bg-teal-700 text-white hover:bg-teal-800 transition disabled:opacity-60"
+            disabled={refreshingAll || lrLoading || logLoading}
+          >
+            {refreshingAll || lrLoading || logLoading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[1050px]">
+          <table className="w-full text-left min-w-[1300px]">
             <thead>
               <tr className="bg-gradient-to-r from-slate-100 to-teal-100 text-slate-900">
                 <th className="p-3">Symbol</th>
                 <th className="p-3">Stock</th>
-                <th className="p-3">Last</th>
+                <th className="p-3">Current Price</th>
                 <th className="p-3">Min (365d)</th>
                 <th className="p-3">Max (365d)</th>
                 <th className="p-3">P/E</th>
                 <th className="p-3">Discount</th>
+                <th className="p-3">Predicted Next Close</th>
+                <th className="p-3">Predicted Change</th>
+                <th className="p-3">Signal</th>
                 <th className="p-3">Action</th>
               </tr>
             </thead>
@@ -327,6 +349,27 @@ export default function PortfolioDetail() {
                   <td className="p-3">{fmt(s.max365, 2)}</td>
                   <td className="p-3">{s.pe_ratio ?? '-'}</td>
                   <td className="p-3">{s.discount === null ? '-' : `${fmt(s.discount, 2)}%`}</td>
+                  <td className="p-3">{fmt(s.predictedNextClose, 2)}</td>
+                  <td className={`p-3 font-medium ${s.predictedChangePercent !== null && s.predictedChangePercent >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {s.predictedChangePercent === null ? '-' : `${fmt(s.predictedChangePercent, 2)}%`}
+                  </td>
+                  <td className="p-3">
+                    {s.signal ? (
+                      <span
+                        className={`px-2 py-1 rounded text-xs font-semibold ${
+                          s.signal === 'BUY'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : s.signal === 'HOLD'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-rose-100 text-rose-700'
+                        }`}
+                      >
+                        {s.signal}
+                      </span>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
                       <Link
