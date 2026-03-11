@@ -1,0 +1,40 @@
+.dashboard-container {
+  padding: 40px;
+  max-width: 1200px;
+  margin: auto;
+  font-family: Arial, sans-serif;
+}
+
+.dashboard-title {
+  font-size: 32px;
+  margin-bottom: 30px;
+}
+
+.portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 25px;
+}
+
+.portfolio-card {
+  background: white;
+  padding: 25px;
+  border-radius: 14px;
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.portfolio-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+
+.portfolio-card h2 {
+  margin-bottom: 10px;
+}
+
+.portfolio-card p {
+  margin: 5px 0;
+  color: #555;
+}

@@ -1,0 +1,68 @@
+.stock-container {
+  padding: 30px;
+  max-width: 1200px;
+  margin: auto;
+  font-family: Arial, sans-serif;
+}
+
+.stock-header {
+  margin-bottom: 25px;
+}
+
+.stock-header h1 {
+  font-size: 28px;
+  margin: 0;
+}
+
+.stock-header h2 {
+  font-size: 32px;
+  margin: 5px 0;
+}
+
+.positive {
+  color: #0f9d58;
+  font-weight: bold;
+}
+
+.negative {
+  color: #d93025;
+  font-weight: bold;
+}
+
+.card {
+  background: white;
+  padding: 20px;
+  margin-bottom: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.range-bar {
+  height: 10px;
+  background: #e0e0e0;
+  border-radius: 5px;
+  margin: 10px 0;
+  position: relative;
+}
+
+.range-progress {
+  height: 10px;
+  background: #2962ff;
+  border-radius: 5px;
+}
+
+.range-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
+.chart-card {
+  margin-top: 20px;
+}
