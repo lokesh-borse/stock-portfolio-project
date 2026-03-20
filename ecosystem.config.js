@@ -1,33 +1,23 @@
-// module.exports = {
-//   apps: [
-//     {
-//       name: "backend",
-//       script: "cmd",
-//       args: "/c evn\\Scripts\\python backend\\manage.py runserver 0.0.0.0:8000",
-//       cwd: "./"
-//     },
-//     {
-//       name: "frontend",
-//       script: "cmd",
-//       args: "/c npm run dev",
-//       cwd: "./frontend"
-//     }
-//   ]
-// };
-
 module.exports = {
   apps: [
     {
+<<<<<<< Updated upstream
       name: "backend",
-      script: "./evn/Scripts/python.exe",
+      script: "venv/bin/python",
       args: "backend/manage.py runserver 0.0.0.0:8000",
-      cwd: "./"
+      cwd: "/home/azure/stock-portfolio-project"
     },
     {
       name: "frontend",
-      script: "cmd",
-      args: "/c npm run dev",
-      cwd: "./frontend"
+      script: "npm",
+      args: "run dev",
+      cwd: "/home/azure/stock-portfolio-project/frontend"
+=======
+      name: "stock-backend",
+      script: "venv/bin/python",
+      args: "backend/manage.py runserver 0.0.0.0:8001",
+      cwd: "/home/azure/stock-portfolio-project"
+>>>>>>> Stashed changes
     }
   ]
 };

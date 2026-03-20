@@ -4,7 +4,7 @@ echo "Starting Django backend..."
 
 cd backend
 source ../evn/bin/activate
-python manage.py runserver 0.0.0.0:8000 &
+python manage.py runserver 0.0.0.0:8001 &
 
 cd ..
 

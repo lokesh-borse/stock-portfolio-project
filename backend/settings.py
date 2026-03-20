@@ -83,6 +83,7 @@ REST_FRAMEWORK = {
 }
 
 CORS_ALLOWED_ORIGINS = [
+'https://aistockportfolio.duckdns.org',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
     'http://localhost:5174',
@@ -95,8 +96,14 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 ]
 
 CSRF_TRUSTED_ORIGINS = [
+'https://aistockportfolio.duckdns.org',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
     'http://localhost:5174',
     'http://127.0.0.1:5174',
 ]
+<<<<<<< Updated upstream
+
+CORS_ALLOW_ALL_ORIGINS = True
+=======
+>>>>>>> Stashed changes
