@@ -15,10 +15,6 @@ def register(request):
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     data = serializer.validated_data
-    if User.objects.filter(username=data['username']).exists():
-        return Response({'detail': 'Username exists'}, status=status.HTTP_400_BAD_REQUEST)
-    if User.objects.filter(email=data['email']).exists():
-        return Response({'detail': 'Email exists'}, status=status.HTTP_400_BAD_REQUEST)
     user = User.objects.create_user(username=data['username'], email=data['email'], password=data['password'])
     UserProfile.objects.create(user=user)
     token, _ = Token.objects.get_or_create(user=user)
@@ -27,9 +23,15 @@ def register(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login(request):
-    username = request.data.get('username')
+    email = request.data.get('email')
     password = request.data.get('password')
-    user = authenticate(username=username, password=password)
+    if not email or not password:
+        return Response({'detail': 'Email and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        user_obj = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response({'detail': 'Invalid credentials'}, status=status.HTTP_400_BAD_REQUEST)
+    user = authenticate(username=user_obj.username, password=password)
     if not user:
         return Response({'detail': 'Invalid credentials'}, status=status.HTTP_400_BAD_REQUEST)
     token, _ = Token.objects.get_or_create(user=user)

@@ -14,7 +14,7 @@ export default function Register() {
   async function onSubmit(e) {
     e.preventDefault()
     const ok = await register(username, email, password)
-    if (ok) navigate('/portfolio')
+    if (ok) navigate('/login', { state: { message: 'Account created! Please log in.' } })
   }
   return (
     <div className="mx-auto w-[94vw] max-w-md p-4 md:p-8">

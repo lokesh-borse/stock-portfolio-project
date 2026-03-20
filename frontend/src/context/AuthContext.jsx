@@ -13,14 +13,14 @@ export function AuthProvider({ children }) {
     setIsAuthenticated(!!token)
   }, [])
 
-  async function login(username, password) {
+  async function login(email, password) {
     setLoading(true)
     setError(null)
     try {
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}login/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ email, password })
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
@@ -50,12 +50,18 @@ export function AuthProvider({ children }) {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
-        throw new Error(data?.detail || 'Registration failed')
+        // DRF returns field errors as {field: ["msg"]} or {detail: "msg"}
+        let msg = 'Registration failed'
+        if (data?.detail) {
+          msg = data.detail
+        } else if (data && typeof data === 'object') {
+          const messages = Object.entries(data)
+            .map(([field, errs]) => `${field.charAt(0).toUpperCase() + field.slice(1)}: ${Array.isArray(errs) ? errs.join(' ') : errs}`)
+          if (messages.length) msg = messages.join(' | ')
+        }
+        throw new Error(msg)
       }
-      const data = await res.json()
-      localStorage.setItem('token', data.token)
-      setUser(data.user || null)
-      setIsAuthenticated(true)
+      // Don't auto-login after registration — redirect to login page instead
       return true
     } catch (e) {
       setError(e.message)

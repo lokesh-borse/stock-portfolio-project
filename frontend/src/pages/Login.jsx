@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 
 export default function Login() {
   const { isAuthenticated, login, loading, error } = useAuth()
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const navigate = useNavigate()
   const location = useLocation()
@@ -16,7 +16,7 @@ export default function Login() {
   }, [isAuthenticated, navigate, location])
   async function onSubmit(e) {
     e.preventDefault()
-    const ok = await login(username, password)
+    const ok = await login(email, password)
     if (ok) navigate('/portfolio')
   }
   return (
@@ -27,9 +27,10 @@ export default function Login() {
         <form onSubmit={onSubmit} className="space-y-4">
           <input
             className="w-full border border-slate-200 rounded-xl px-4 py-3 bg-white/90 focus:outline-none focus:ring-2 focus:ring-teal-500"
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
           <input
             className="w-full border border-slate-200 rounded-xl px-4 py-3 bg-white/90 focus:outline-none focus:ring-2 focus:ring-teal-500"
@@ -38,6 +39,11 @@ export default function Login() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+          {location.state?.message && (
+            <div className="text-emerald-700 text-sm bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
+              ✓ {location.state.message}
+            </div>
+          )}
           {error && <div className="text-rose-700 text-sm">{error}</div>}
           <button
             className="w-full bg-gradient-to-r from-teal-700 to-cyan-700 text-white rounded-xl px-4 py-3 font-semibold hover:from-teal-600 hover:to-cyan-600 transition"

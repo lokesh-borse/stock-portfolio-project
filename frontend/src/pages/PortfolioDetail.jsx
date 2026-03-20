@@ -1,15 +1,28 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
+  Chart as ChartJS,
+  LinearScale,
+  PointElement,
+  Tooltip,
+  Legend,
+} from 'chart.js'
+import { Scatter } from 'react-chartjs-2'
+import {
   addStockToPortfolio,
   fetchHistoricalBySymbol,
   fetchLiveStockBySymbol,
   fetchPortfolioById,
   fetchPortfolioLinearRegression,
   fetchPortfolioLogisticRegression,
+  fetchPortfolioClusters,
   removeStockFromPortfolio,
   searchLiveStocks
 } from '../api/stocks.js'
+
+ChartJS.register(LinearScale, PointElement, Tooltip, Legend)
+
+const CLUSTER_COLORS = ['#2563EB', '#16A34A', '#D97706', '#9333EA', '#DC2626', '#0891B2']
 
 function PeRatioGraph({ points }) {
   if (!points.length) return <div className="text-sm text-slate-500">No P/E data yet.</div>
@@ -58,6 +71,148 @@ function PeRatioGraph({ points }) {
   )
 }
 
+function ClusterPanel({ portfolioId }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [ran, setRan] = useState(false)
+
+  async function run() {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetchPortfolioClusters(portfolioId)
+      setData(res)
+      setRan(true)
+    } catch (e) {
+      setError(e?.response?.data?.detail || 'Clustering failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const scatterData = useMemo(() => {
+    if (!data?.items?.length) return null
+    const map = new Map()
+    for (const item of data.items) {
+      const cid = item.cluster_id
+      if (!map.has(cid)) map.set(cid, { points: [], label: item.cluster_label })
+      map.get(cid).points.push({ x: item.pca_x, y: item.pca_y, symbol: item.symbol })
+    }
+    const datasets = [...map.entries()].map(([cid, payload], idx) => ({
+      label: `Cluster ${cid} – ${payload.label}`,
+      data: payload.points,
+      pointRadius: 8,
+      borderColor: CLUSTER_COLORS[idx % CLUSTER_COLORS.length],
+      backgroundColor: `${CLUSTER_COLORS[idx % CLUSTER_COLORS.length]}99`,
+    }))
+    return { datasets }
+  }, [data])
+
+  const scatterOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top' },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const p = ctx.raw
+            return `${ctx.dataset.label} | ${p.symbol} | (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`
+          }
+        }
+      }
+    },
+    scales: {
+      x: { title: { display: true, text: 'PCA 1' } },
+      y: { title: { display: true, text: 'PCA 2' } },
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-white/80 bg-white/90 p-5 mb-6 shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">Portfolio K-Means Clustering</h2>
+          <p className="text-sm text-slate-500 mt-0.5">Groups stocks by return, volatility, drawdown & 52-week position</p>
+        </div>
+        <button
+          onClick={run}
+          disabled={loading}
+          className="px-4 py-2 rounded-xl bg-teal-700 text-white font-semibold hover:bg-teal-800 transition disabled:opacity-60"
+        >
+          {loading ? 'Running…' : ran ? 'Re-run' : 'Run Clustering'}
+        </button>
+      </div>
+
+      {error && <div className="text-rose-600 text-sm mb-3">{error}</div>}
+
+      {data && (
+        <>
+          {/* Summary chips */}
+          <div className="flex flex-wrap gap-3 mb-4">
+            {(data.summary || []).map((s, idx) => (
+              <div key={s.cluster_id} className="rounded-xl border px-4 py-2 text-sm" style={{ borderColor: CLUSTER_COLORS[idx % CLUSTER_COLORS.length] }}>
+                <span className="font-bold mr-1" style={{ color: CLUSTER_COLORS[idx % CLUSTER_COLORS.length] }}>
+                  {s.cluster_label}
+                </span>
+                <span className="text-slate-600">({s.count} stocks)</span>
+                <span className="text-slate-500 ml-2">Ret: {(s.avg_ret_1y * 100).toFixed(1)}% · Vol: {(s.avg_vol * 100).toFixed(1)}%</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Scatter chart */}
+          {scatterData && (
+            <div className="h-[380px] mb-4">
+              <Scatter data={scatterData} options={scatterOptions} />
+            </div>
+          )}
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm min-w-[700px]">
+              <thead>
+                <tr className="bg-slate-50 text-slate-700">
+                  <th className="p-3">Symbol</th>
+                  <th className="p-3">Cluster</th>
+                  <th className="p-3">1Y Return</th>
+                  <th className="p-3">Volatility</th>
+                  <th className="p-3">Max Drawdown</th>
+                  <th className="p-3">52W Position</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data.items || []).map((row, idx) => {
+                  const colorIdx = data.items.slice(0, idx + 1).filter(r => r.cluster_id === row.cluster_id).length === 1
+                    ? data.summary.findIndex(s => s.cluster_id === row.cluster_id)
+                    : data.summary.findIndex(s => s.cluster_id === row.cluster_id)
+                  return (
+                    <tr key={row.symbol} className="border-t border-slate-100 hover:bg-slate-50 transition">
+                      <td className="p-3 font-semibold text-slate-900">{row.symbol}</td>
+                      <td className="p-3">
+                        <span className="px-2 py-0.5 rounded text-xs font-semibold" style={{ background: `${CLUSTER_COLORS[colorIdx % CLUSTER_COLORS.length]}22`, color: CLUSTER_COLORS[colorIdx % CLUSTER_COLORS.length] }}>
+                          {row.cluster_label}
+                        </span>
+                      </td>
+                      <td className={`p-3 font-medium ${row.ret_1y >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                        {(row.ret_1y * 100).toFixed(2)}%
+                      </td>
+                      <td className="p-3 text-slate-700">{(row.vol * 100).toFixed(2)}%</td>
+                      <td className="p-3 text-rose-700">{(row.max_drawdown * 100).toFixed(2)}%</td>
+                      <td className="p-3 text-slate-700">{(row.pos_52w * 100).toFixed(1)}%</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function PortfolioDetail() {
   const { id } = useParams()
   const [portfolio, setPortfolio] = useState(null)
@@ -70,6 +225,9 @@ export default function PortfolioDetail() {
   const [logData, setLogData] = useState(null)
   const [logLoading, setLogLoading] = useState(false)
   const [refreshingAll, setRefreshingAll] = useState(false)
+  // toggles
+  const [showPE, setShowPE] = useState(false)
+  const [showClusters, setShowClusters] = useState(false)
 
   async function loadPortfolio() {
     try {
@@ -80,9 +238,7 @@ export default function PortfolioDetail() {
     }
   }
 
-  useEffect(() => {
-    loadPortfolio()
-  }, [id])
+  useEffect(() => { loadPortfolio() }, [id])
 
   async function loadLinearRegression() {
     setLrLoading(true)
@@ -96,9 +252,7 @@ export default function PortfolioDetail() {
     }
   }
 
-  useEffect(() => {
-    loadLinearRegression()
-  }, [id])
+  useEffect(() => { loadLinearRegression() }, [id])
 
   async function loadLogisticRegression() {
     setLogLoading(true)
@@ -112,32 +266,22 @@ export default function PortfolioDetail() {
     }
   }
 
-  useEffect(() => {
-    loadLogisticRegression()
-  }, [id])
+  useEffect(() => { loadLogisticRegression() }, [id])
 
   useEffect(() => {
     const timer = setTimeout(async () => {
-      if (!query.trim()) {
-        setSuggestions([])
-        return
-      }
+      if (!query.trim()) { setSuggestions([]); return }
       try {
         const data = await searchLiveStocks(query, 8)
         setSuggestions(data || [])
-      } catch {
-        setSuggestions([])
-      }
+      } catch { setSuggestions([]) }
     }, 250)
     return () => clearTimeout(timer)
   }, [query])
 
   useEffect(() => {
     async function loadHistory() {
-      if (!portfolio?.stocks?.length) {
-        setMetricsMap({})
-        return
-      }
+      if (!portfolio?.stocks?.length) { setMetricsMap({}); return }
       const pairs = await Promise.all(
         portfolio.stocks.map(async (s) => {
           try {
@@ -148,26 +292,11 @@ export default function PortfolioDetail() {
             const prices = d?.prices || []
             const livePrice = Number(live?.price)
             const lastLive = Number.isFinite(livePrice) ? livePrice : null
-            if (!prices.length) {
-              return [s.symbol, { last: lastLive, min365: null, max365: null }]
-            }
-            const closes = prices
-              .map((p) => Number(p.close_price))
-              .filter((v) => Number.isFinite(v))
-            if (!closes.length) {
-              return [s.symbol, { last: lastLive, min365: null, max365: null }]
-            }
-            return [
-              s.symbol,
-              {
-                last: lastLive ?? closes[closes.length - 1],
-                min365: Math.min(...closes),
-                max365: Math.max(...closes)
-              }
-            ]
-          } catch {
-            return [s.symbol, { last: null, min365: null, max365: null }]
-          }
+            if (!prices.length) return [s.symbol, { last: lastLive, min365: null, max365: null }]
+            const closes = prices.map((p) => Number(p.close_price)).filter((v) => Number.isFinite(v))
+            if (!closes.length) return [s.symbol, { last: lastLive, min365: null, max365: null }]
+            return [s.symbol, { last: lastLive ?? closes[closes.length - 1], min365: Math.min(...closes), max365: Math.max(...closes) }]
+          } catch { return [s.symbol, { last: null, min365: null, max365: null }] }
         })
       )
       setMetricsMap(Object.fromEntries(pairs))
@@ -214,21 +343,10 @@ export default function PortfolioDetail() {
       const max365 = toFinite(metrics.max365)
       const avg = toFinite(s.purchase_price)
       const qty = toFinite(s.quantity) ?? 0
-      const discount = last !== null && max365 !== null && max365 > 0
-        ? ((max365 - last) / max365) * 100
-        : null
-      const unrealizedPnl = last !== null && avg !== null
-        ? (last - avg) * qty
-        : null
+      const discount = last !== null && max365 !== null && max365 > 0 ? ((max365 - last) / max365) * 100 : null
+      const unrealizedPnl = last !== null && avg !== null ? (last - avg) * qty : null
       return {
-        ...s,
-        last,
-        min365,
-        max365,
-        avg,
-        qty,
-        discount,
-        unrealizedPnl,
+        ...s, last, min365, max365, avg, qty, discount, unrealizedPnl,
         predictedNextClose: toFinite(lr?.predicted_next_close),
         predictedChangePercent: toFinite(lr?.predicted_change_percent),
         signal: log?.signal || null
@@ -245,9 +363,7 @@ export default function PortfolioDetail() {
       await loadPortfolio()
       await loadLinearRegression()
       await loadLogisticRegression()
-    } catch {
-      setMessage('Add failed')
-    }
+    } catch { setMessage('Add failed') }
   }
 
   async function onRemove(symbol) {
@@ -257,9 +373,7 @@ export default function PortfolioDetail() {
       await loadPortfolio()
       await loadLinearRegression()
       await loadLogisticRegression()
-    } catch {
-      setMessage('Remove failed')
-    }
+    } catch { setMessage('Remove failed') }
   }
 
   async function onRefreshAll() {
@@ -278,6 +392,7 @@ export default function PortfolioDetail() {
         <div className="text-slate-600 mt-1 text-lg">{portfolio.description || 'No description'}</div>
       </div>
 
+      {/* Stock search */}
       <div className="rounded-2xl border border-white/80 bg-white/90 backdrop-blur p-5 mb-6 shadow-sm">
         <div className="font-semibold text-slate-900 mb-3 text-lg">Find stock (yfinance)</div>
         <input
@@ -301,11 +416,34 @@ export default function PortfolioDetail() {
         </ul>
       </div>
 
-      <div className="rounded-2xl border border-white/80 bg-white/90 backdrop-blur p-6 mb-6 shadow-sm">
-        <div className="font-semibold text-slate-900 mb-4 text-2xl">Portfolio P/E Ratio Graph</div>
-        <PeRatioGraph points={pePoints} />
+      {/* Analysis toggles */}
+      <div className="flex flex-wrap gap-3 mb-6">
+        <button
+          onClick={() => setShowPE((v) => !v)}
+          className={`px-4 py-2 rounded-xl text-sm font-semibold border transition ${showPE ? 'bg-blue-700 border-blue-700 text-white shadow' : 'bg-white/90 border-blue-600 text-blue-700 hover:bg-blue-50'}`}
+        >
+          {showPE ? 'Hide' : 'Show'} P/E Ratio Chart
+        </button>
+        <button
+          onClick={() => setShowClusters((v) => !v)}
+          className={`px-4 py-2 rounded-xl text-sm font-semibold border transition ${showClusters ? 'bg-teal-700 border-teal-700 text-white shadow' : 'bg-white/90 border-teal-600 text-teal-700 hover:bg-teal-50'}`}
+        >
+          {showClusters ? 'Hide' : 'Show'} K-Means Clustering
+        </button>
       </div>
 
+      {/* P/E Chart (toggle) */}
+      {showPE && (
+        <div className="rounded-2xl border border-white/80 bg-white/90 backdrop-blur p-6 mb-6 shadow-sm">
+          <div className="font-semibold text-slate-900 mb-4 text-2xl">Portfolio P/E Ratio Graph</div>
+          <PeRatioGraph points={pePoints} />
+        </div>
+      )}
+
+      {/* K-Means Clustering (toggle) */}
+      {showClusters && <ClusterPanel portfolioId={id} />}
+
+      {/* Holdings table */}
       {message && <div className="mb-4 text-sm font-medium text-emerald-700">{message}</div>}
       <div className="rounded-2xl border border-white/80 bg-white/90 overflow-hidden shadow-sm">
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50/80">
@@ -355,32 +493,15 @@ export default function PortfolioDetail() {
                   </td>
                   <td className="p-3">
                     {s.signal ? (
-                      <span
-                        className={`px-2 py-1 rounded text-xs font-semibold ${
-                          s.signal === 'BUY'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : s.signal === 'HOLD'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-rose-100 text-rose-700'
-                        }`}
-                      >
+                      <span className={`px-2 py-1 rounded text-xs font-semibold ${s.signal === 'BUY' ? 'bg-emerald-100 text-emerald-700' : s.signal === 'HOLD' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-700'}`}>
                         {s.signal}
                       </span>
-                    ) : (
-                      '-'
-                    )}
+                    ) : '-'}
                   </td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
-                      <Link
-                        to={`/stocks/${s.stock_id}`}
-                        className="bg-teal-700 text-white px-3 py-1.5 rounded-lg hover:bg-teal-800 transition"
-                      >
-                        View
-                      </Link>
-                      <button className="bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 transition" onClick={() => onRemove(s.symbol)}>
-                        Remove
-                      </button>
+                      <Link to={`/stocks/${s.stock_id}`} className="bg-teal-700 text-white px-3 py-1.5 rounded-lg hover:bg-teal-800 transition">View</Link>
+                      <button className="bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 transition" onClick={() => onRemove(s.symbol)}>Remove</button>
                     </div>
                   </td>
                 </tr>

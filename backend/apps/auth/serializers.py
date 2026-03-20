@@ -13,4 +13,14 @@ class UserSerializer(serializers.ModelSerializer):
 class RegisterSerializer(serializers.Serializer):
     username = serializers.CharField()
     email = serializers.EmailField()
-    password = serializers.CharField()
+    password = serializers.CharField(write_only=True, min_length=4)
+
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError('This username is already taken.')
+        return value
+
+    def validate_email(self, value):
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError('An account with this email already exists.')
+        return value.lower()

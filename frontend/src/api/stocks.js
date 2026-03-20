@@ -56,6 +56,15 @@ export async function createPortfolio(payload) {
   return res.data
 }
 
+export async function deletePortfolio(portfolioId) {
+  await api.delete(`portfolio/${portfolioId}/`)
+}
+
+export async function fetchPortfolioClusters(portfolioId) {
+  const res = await api.get(`portfolio/${portfolioId}/portfolio-clusters/`, { timeout: 60000 })
+  return res.data
+}
+
 export async function addStockToPortfolio(portfolioId, symbol, quantity, purchase_price, purchase_date) {
   const res = await api.post(`portfolio/${portfolioId}/add-stock/`, {
     symbol,

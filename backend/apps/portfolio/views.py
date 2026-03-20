@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 import math
 
+import numpy as np
 import pandas as pd
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -341,3 +342,97 @@ class PortfolioViewSet(viewsets.ModelViewSet):
                 'created_at': forecast_record.created_at,
             }
         )
+
+    @action(detail=True, methods=['GET'], url_path='portfolio-clusters')
+    def portfolio_clusters(self, request, pk=None):
+        from sklearn.cluster import KMeans
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.decomposition import PCA
+
+        portfolio = self.get_object()
+        holdings = portfolio.holdings.select_related('stock').all()
+
+        if not holdings.exists():
+            return Response({'detail': 'No holdings in portfolio'}, status=status.HTTP_400_BAD_REQUEST)
+
+        rows = []
+        for h in holdings:
+            symbol = h.stock.symbol
+            history = get_history(symbol, period='1y', interval='1d') or []
+            closes = [float(r['close_price']) for r in history if r.get('close_price') is not None]
+            if len(closes) < 20:
+                continue
+
+            prices = np.array(closes, dtype=float)
+            returns = np.diff(prices) / prices[:-1]
+            ret_1y = float((prices[-1] / prices[0]) - 1) if prices[0] != 0 else 0
+            vol = float(np.std(returns) * np.sqrt(252))
+            max_dd = float(np.min((prices / np.maximum.accumulate(prices)) - 1))
+            high_52 = float(h.stock._52_week_high) if h.stock._52_week_high else float(np.max(prices))
+            low_52 = float(h.stock._52_week_low) if h.stock._52_week_low else float(np.min(prices))
+            pos_52 = (prices[-1] - low_52) / (high_52 - low_52) if (high_52 - low_52) > 0 else 0.5
+
+            rows.append({
+                'symbol': symbol,
+                'name': h.stock.name,
+                'ret_1y': round(ret_1y, 4),
+                'vol': round(vol, 4),
+                'max_drawdown': round(max_dd, 4),
+                'pos_52w': round(pos_52, 4),
+            })
+
+        if len(rows) < 3:
+            return Response({'detail': 'Need at least 3 stocks with sufficient data for clustering'}, status=status.HTTP_400_BAD_REQUEST)
+
+        feature_keys = ['ret_1y', 'vol', 'max_drawdown', 'pos_52w']
+        X = np.array([[r[k] for k in feature_keys] for r in rows], dtype=float)
+        X_scaled = StandardScaler().fit_transform(X)
+
+        n_clusters = min(3, len(rows))
+        kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=42)
+        labels = kmeans.fit_predict(X_scaled)
+
+        pca = PCA(n_components=2, random_state=42)
+        pca_pts = pca.fit_transform(X_scaled)
+
+        cluster_vols = {}
+        for i, row in enumerate(rows):
+            cid = int(labels[i])
+            cluster_vols.setdefault(cid, []).append(row['vol'])
+        avg_vols = {cid: float(np.mean(vols)) for cid, vols in cluster_vols.items()}
+        sorted_cids = sorted(avg_vols, key=avg_vols.get, reverse=True)
+        risk_labels_list = ['High-Risk', 'Medium-Risk', 'Low-Risk']
+        cluster_label_map = {cid: risk_labels_list[i] for i, cid in enumerate(sorted_cids)}
+
+        items = []
+        for i, row in enumerate(rows):
+            cid = int(labels[i])
+            items.append({
+                **row,
+                'cluster_id': cid,
+                'cluster_label': cluster_label_map.get(cid, f'Cluster {cid}'),
+                'pca_x': round(float(pca_pts[i, 0]), 4),
+                'pca_y': round(float(pca_pts[i, 1]), 4),
+            })
+
+        summary = []
+        for cid in range(n_clusters):
+            group = [r for r in items if r['cluster_id'] == cid]
+            if not group:
+                continue
+            summary.append({
+                'cluster_id': cid,
+                'cluster_label': cluster_label_map.get(cid, f'Cluster {cid}'),
+                'count': len(group),
+                'avg_ret_1y': round(float(np.mean([r['ret_1y'] for r in group])), 4),
+                'avg_vol': round(float(np.mean([r['vol'] for r in group])), 4),
+                'avg_max_drawdown': round(float(np.mean([r['max_drawdown'] for r in group])), 4),
+            })
+
+        return Response({
+            'portfolio_id': portfolio.id,
+            'portfolio_name': portfolio.name,
+            'n_clusters': n_clusters,
+            'items': items,
+            'summary': summary,
+        })
